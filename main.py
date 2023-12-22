@@ -103,7 +103,7 @@ def save_history(user_id: int, messages: List[Dict[str, Union[str, int]]]):
 
 # Функция для отправки сообщений от пользователя в API
 
-async def send_user_messages(access_token: str, messages: List[Dict[str, Union[str, int]]]):
+async def send_user_messages(access_token: str, messages: List[Dict[str, Union[str, int]]], timeout: int = 30):
     api_url = 'https://gigachat.devices.sberbank.ru/api/v1/chat/completions'
     headers = {
         'Content-Type': 'application/json',
@@ -115,10 +115,11 @@ async def send_user_messages(access_token: str, messages: List[Dict[str, Union[s
         'temperature': 0.5,
     }
 
-    async with httpx.AsyncClient(verify=False) as client:
+    async with httpx.AsyncClient(verify=False, timeout=timeout) as client:
         response = await client.post(api_url, headers=headers, json=data)
 
     return response.json(), response.status_code
+
 
 
 # Функция для обработки ответа API на отправку сообщений от пользователя
