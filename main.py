@@ -128,18 +128,17 @@ async def handle_user_messages(message: types.Message, access_token: str, user_i
     rquid = generate_rquid()
 
     # Выполняем запрос отправки сообщений от пользователя
-    messages_to_api = [
-        {'role': 'user', 'content': message.text},
-        {'role': 'assistant', 'content': ''},
-    ]
+    messages_to_api = [{'role': 'user', 'content': message.text}]
     api_response, status_code = await send_user_messages(access_token, messages_to_api)
 
     if status_code == 200:
         # Забираем значение "message" из ответа API
         assistant_message = api_response.get('choices', [])[0].get('message', {}).get('content', '')
+        messages_out_api = [{'role': 'assistant', 'content': assistant_message}]
 
         # Сохраняем историю сообщений
         save_history(user_id, messages_to_api)
+        save_history(user_id, messages_out_api)
 
         # Отправляем ответ от API пользователю
         await message.reply(assistant_message)
