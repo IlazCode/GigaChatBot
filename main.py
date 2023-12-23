@@ -94,7 +94,8 @@ async def send_user_messages(access_token: str, messages: List[Dict[str, Union[s
         'messages': messages,
         'temperature': 0.5,
     }
-
+    # print("Request data:")
+    # print(json.dumps(data, indent=2))
     async with httpx.AsyncClient(verify=False, timeout=timeout) as client:
         response = await client.post(api_url, headers=headers, json=data)
 
@@ -104,7 +105,10 @@ async def send_user_messages(access_token: str, messages: List[Dict[str, Union[s
 async def handle_user_messages(message: types.Message, access_token: str, user_id: int):
     rquid = generate_rquid()
     messages_to_api = [{'role': 'user', 'content': message.text}]
-    api_response, status_code = await send_user_messages(access_token, messages_to_api)
+    # Загружаем историю из файла
+    history = read_history(user_id)
+    messages = history + messages_to_api
+    api_response, status_code = await send_user_messages(access_token, messages, timeout=30)
 
     if status_code == 200:
         assistant_message = api_response.get('choices', [])[0].get('message', {}).get('content', '')
@@ -133,6 +137,16 @@ def save_history(user_id: int, messages: List[Dict[str, Union[str, int]]]):
 
     with open(history_file, 'w') as file:
         json.dump(history, file)
+
+# Функцию для чтения истории из файла
+def read_history(user_id):
+    history_file = f'history_{user_id}.json'
+    try:
+        with open(history_file, 'r') as file:
+            history = json.load(file)
+    except FileNotFoundError:
+        history = []
+    return history
 
 # Обработчик команды /start
 @dp.message_handler(commands=['start'])
