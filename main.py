@@ -4,6 +4,9 @@ import httpx
 import json
 import os
 import logging
+import re
+from PIL import Image
+from io import BytesIO
 from logging import FileHandler
 from typing import List, Dict, Union
 from aiogram.dispatcher import FSMContext
@@ -104,6 +107,14 @@ async def send_user_messages(access_token: str, messages: List[Dict[str, Union[s
 # Функция для обработки сообщений пользователя из API
 async def handle_user_messages(message: types.Message, access_token: str, user_id: int):
     rquid = generate_rquid()
+    # Проверяем, существует ли файл истории
+    history_file = f'history_{user_id}.json'
+    if not os.path.exists(history_file):
+        # Если файл не существует, создаем его с начальными данными
+        initial_history = [{"role": "system","content": "Если тебя просят создать изображение, ты должен сгенерировать специальный блок: <fuse>text2image(query: str, style: str)</fuse>,\nгде query — текстовое описание желаемого изображения, style — опциональный параметр, управляющий стилем генерации."}]
+        with open(history_file, 'w') as file:
+            json.dump(initial_history, file)
+
     messages_to_api = [{'role': 'user', 'content': message.text}]
     # Загружаем историю из файла
     history = read_history(user_id)
@@ -114,10 +125,15 @@ async def handle_user_messages(message: types.Message, access_token: str, user_i
         assistant_message = api_response.get('choices', [])[0].get('message', {}).get('content', '')
         messages_out_api = [{'role': 'assistant', 'content': assistant_message}]
 
-        save_history(user_id, messages_to_api)
-        save_history(user_id, messages_out_api)
+        # Проверяем, содержит ли ответ <img> в атрибуте src
+        if "<img" in assistant_message and "src=" in assistant_message:
+            # Если содержит, обрабатываем с помощью другой функции
+            await handle_img_response(message, assistant_message, access_token, user_id, messages_to_api)
+        else:
+            save_history(user_id, messages_to_api)
+            save_history(user_id, messages_out_api)
+            await message.reply(assistant_message)
 
-        await message.reply(assistant_message)
     elif status_code == 401:
         await authorize()
         await handle_user_messages(message, access_token, user_id)
@@ -145,8 +161,50 @@ def read_history(user_id):
         with open(history_file, 'r') as file:
             history = json.load(file)
     except FileNotFoundError:
-        history = []
+        history = [{"role": "system","content": "Если тебя просят создать изображение, ты должен сгенерировать специальный блок: <fuse>text2image(query: str, style: str)</fuse>,\nгде query — текстовое описание желаемого изображения, style — опциональный параметр, управляющий стилем генерации."}]
     return history
+
+# Показать изображение
+async def handle_img_response(message: types.Message, img_content: str, access_token: str,user_id: int, mes):
+    # Используем регулярное выражение для извлечения значения из атрибута src
+    match = re.search(r'<img\s+src\s*=\s*\"([^"]+)\"', img_content)
+
+    if match:
+        img_src = match.group(1)
+
+        # Составляем URL для получения изображения
+        url = f"https://gigachat.devices.sberbank.ru/api/v1/files/{img_src}/content"
+
+        # Заголовки
+        headers = {
+            'Content-Type': 'application/json',
+            'Authorization': f'Bearer {access_token}'
+        }
+
+        async with httpx.AsyncClient(verify=False) as client:
+            # Отправляем GET-запрос с использованием httpx
+            response = await client.get(url, headers=headers)
+
+            # Проверяем успешность запроса
+            response.raise_for_status()
+
+            # Создаем объект изображения из байтов
+            img = Image.open(BytesIO(response.content))
+            # Создаем временный файл
+            with BytesIO() as temp_file:
+                img.save(temp_file, format="JPEG")
+                temp_file.seek(0)
+                # Показываем изображение текущему пользователю в Telegram
+                await bot.send_photo(chat_id=message.chat.id, photo=temp_file)
+                # Удаляем временный файл
+                temp_file.close()
+                # Сохраняем историю и отвечаем пользователю
+                save_history(user_id, mes)
+
+    else:
+        # Если не удалось извлечь идентификатор изображения
+        await message.reply("Не удалось извлечь идентификатор изображения")
+
 
 # Обработчик команды /start
 @dp.message_handler(commands=['start'])
@@ -158,10 +216,14 @@ async def start_command(message: types.Message):
 async def reset_command(message: types.Message):
     user_id = message.from_user.id
     history_file = f'history_{user_id}.json'
+    new_data = [{"role": "system","content": "Если тебя просят создать изображение, ты должен сгенерировать специальный блок: <fuse>text2image(query: str, style: str)</fuse>,\nгде query — текстовое описание желаемого изображения, style — опциональный параметр, управляющий стилем генерации."}]
 
     try:
         os.remove(history_file)
         await message.reply("История чата успешно удалена.")
+        # Создание нового файла и запись данных
+        with open(history_file, 'w') as file:
+            json.dump(new_data, file, indent=2)
     except FileNotFoundError:
         await message.reply("Файл истории чата не найден.")
     except Exception as e:
