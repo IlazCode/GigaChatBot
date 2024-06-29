@@ -163,11 +163,18 @@ def read_history(user_id):
         with open(history_file, 'r') as file:
             history = json.load(file)
     except FileNotFoundError:
-        history = [{"role": "system","content": "Если тебя просят создать изображение, ты должен сгенерировать специальный блок: <fuse>text2image(query: str, style: str)</fuse>,\nгде query — текстовое описание желаемого изображения, style — опциональный параметр, управляющий стилем генерации."}]
+        history = []
     return history
 
 # Показать изображение
-async def handle_img_response(message: types.Message, img_content: str, access_token: str,user_id: int, mes):
+import re
+from io import BytesIO
+from PIL import Image
+import httpx
+from aiogram import types
+
+
+async def handle_img_response(message: types.Message, img_content: str, access_token: str, user_id: int, mes):
     # Используем регулярное выражение для извлечения значения из атрибута src
     match = re.search(r'<img\s+src\s*=\s*\"([^"]+)\"', img_content)
 
@@ -183,26 +190,32 @@ async def handle_img_response(message: types.Message, img_content: str, access_t
             'Authorization': f'Bearer {access_token}'
         }
 
+        # Отправляем сообщение о начале генерации изображения
+        await message.reply("Создаю изображение...")
+
         async with httpx.AsyncClient(verify=False) as client:
-            # Отправляем GET-запрос с использованием httpx
-            response = await client.get(url, headers=headers)
+            try:
+                # Отправляем GET-запрос с использованием httpx
+                response = await client.get(url, headers=headers)
+                # Проверяем успешность запроса
+                response.raise_for_status()
 
-            # Проверяем успешность запроса
-            response.raise_for_status()
+                # Создаем объект изображения из байтов
+                img = Image.open(BytesIO(response.content))
 
-            # Создаем объект изображения из байтов
-            img = Image.open(BytesIO(response.content))
-            # Создаем временный файл
-            with BytesIO() as temp_file:
-                img.save(temp_file, format="JPEG")
-                temp_file.seek(0)
-                # Показываем изображение текущему пользователю в Telegram
-                await bot.send_photo(chat_id=message.chat.id, photo=temp_file)
-                # Удаляем временный файл
-                temp_file.close()
+                # Создаем временный файл
+                with BytesIO() as temp_file:
+                    img.save(temp_file, format="JPEG")
+                    temp_file.seek(0)
+                    # Отправляем изображение текущему пользователю в Telegram
+                    await bot.send_photo(chat_id=message.chat.id, photo=temp_file)
+
                 # Сохраняем историю и отвечаем пользователю
                 save_history(user_id, mes)
-
+            except httpx.HTTPStatusError as e:
+                await message.reply(f"Ошибка при получении изображения: {str(e)}")
+            except Exception as e:
+                await message.reply(f"Произошла ошибка: {str(e)}")
     else:
         # Если не удалось извлечь идентификатор изображения
         await message.reply("Не удалось извлечь идентификатор изображения")
