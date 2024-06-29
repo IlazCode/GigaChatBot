@@ -85,6 +85,7 @@ async def authorize() -> None:
     else:
         print("Ошибка авторизации")
 
+
 # Функция для отправки сообщений пользователя в API
 async def send_user_messages(access_token: str, messages: List[Dict[str, Union[str, int]]], timeout: int = 30):
     api_url = 'https://gigachat.devices.sberbank.ru/api/v1/chat/completions'
@@ -95,6 +96,7 @@ async def send_user_messages(access_token: str, messages: List[Dict[str, Union[s
     data = {
         'model': 'GigaChat:latest',
         'messages': messages,
+        "function_call": "auto",
         'temperature': 0.5,
     }
     # print("Request data:")
@@ -111,7 +113,7 @@ async def handle_user_messages(message: types.Message, access_token: str, user_i
     history_file = f'history_{user_id}.json'
     if not os.path.exists(history_file):
         # Если файл не существует, создаем его с начальными данными
-        initial_history = [{"role": "system","content": "Если тебя просят создать изображение, ты должен сгенерировать специальный блок: <fuse>text2image(query: str, style: str)</fuse>,\nгде query — текстовое описание желаемого изображения, style — опциональный параметр, управляющий стилем генерации."}]
+        initial_history = []
         with open(history_file, 'w') as file:
             json.dump(initial_history, file)
 
@@ -216,14 +218,14 @@ async def start_command(message: types.Message):
 async def reset_command(message: types.Message):
     user_id = message.from_user.id
     history_file = f'history_{user_id}.json'
-    new_data = [{"role": "system","content": "Если тебя просят создать изображение, ты должен сгенерировать специальный блок: <fuse>text2image(query: str, style: str)</fuse>,\nгде query — текстовое описание желаемого изображения, style — опциональный параметр, управляющий стилем генерации."}]
+ #   new_data = [{"role": "system","content": "Если тебя просят создать изображение, ты должен сгенерировать специальный блок: <fuse>text2image(query: str, style: str)</fuse>,\nгде query — текстовое описание желаемого изображения, style — опциональный параметр, управляющий стилем генерации."}]
 
     try:
         os.remove(history_file)
         await message.reply("История чата успешно удалена.")
         # Создание нового файла и запись данных
-        with open(history_file, 'w') as file:
-            json.dump(new_data, file, indent=2)
+  #      with open(history_file, 'w') as file:
+    #        json.dump(new_data, file, indent=2)
     except FileNotFoundError:
         await message.reply("Файл истории чата не найден.")
     except Exception as e:
