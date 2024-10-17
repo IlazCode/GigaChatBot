@@ -129,6 +129,7 @@ async def handle_user_messages(message: types.Message, access_token: str, user_i
 
         # Проверяем, содержит ли ответ <img> в атрибуте src
         if "<img" in assistant_message and "src=" in assistant_message:
+            await message.reply("Создаем изображение...")  # сообщение
             # Если содержит, обрабатываем с помощью другой функции
             await handle_img_response(message, assistant_message, access_token, user_id, messages_to_api)
         else:
@@ -167,13 +168,6 @@ def read_history(user_id):
     return history
 
 # Показать изображение
-import re
-from io import BytesIO
-from PIL import Image
-import httpx
-from aiogram import types
-
-
 async def handle_img_response(message: types.Message, img_content: str, access_token: str, user_id: int, mes):
     # Используем регулярное выражение для извлечения значения из атрибута src
     match = re.search(r'<img\s+src\s*=\s*\"([^"]+)\"', img_content)
@@ -191,7 +185,7 @@ async def handle_img_response(message: types.Message, img_content: str, access_t
         }
 
         # Отправляем сообщение о начале генерации изображения
-        await message.reply("Создаю изображение...")
+ #       await message.reply("Вот что получилось:")
 
         async with httpx.AsyncClient(verify=False) as client:
             try:
